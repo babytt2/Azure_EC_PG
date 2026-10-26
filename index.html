@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Azure PostgreSQL Elastic Clusters MVU: 구조, 검증 환경, 실측 결과, 운영 절차와 미확인 이슈를 카테고리별로 확인하는 가이드.">
+<meta name="description" content="Azure PostgreSQL Elastic Clusters MVU의 구조, 검증 조건, 측정 결과와 운영 준비 절차를 정리한 고객용 가이드.">
 <title>Elastic Clusters MVU | 검증 가이드 · Yujin Cho</title>
 <script>
 (() => {
@@ -129,43 +129,40 @@ footer{font-size:13px;color:var(--cp-text-soft)}.top-link{float:right}
     <a href="#architecture">02. Architecture &amp; Citus</a>
     <a href="#workloads">03. Workload &amp; 설계</a>
     <a href="#upgrade">04. MVU 동작 &amp; 변경 범위</a>
-    <a href="#support">05. Version · Region · API</a>
+    <a href="#support">05. 검증한 Upgrade Path</a>
     <a href="#environment">06. 검증 환경 &amp; 측정 방법</a>
     <a href="#measurements">07. Downtime &amp; 타임라인</a>
-    <a href="#findings">08. Data · Auth · Logs</a>
+    <a href="#findings">08. 서비스 재개 점검</a>
     <a href="#blockers">09. Blocker 검증</a>
     <a href="#runbook">10. 운영 Runbook</a>
-    <a href="#questions">11. FAQ &amp; Open Items</a>
-    <a href="#comparison">12. 서비스 · Upgrade 비교</a>
-    <a href="#references">13. 용어 &amp; 출처</a>
+    <a href="#references">11. 용어 &amp; 출처</a>
   </nav>
   <button class="utility" id="theme" type="button" aria-label="밝은 테마와 어두운 테마 전환">테마 전환</button>
-  <p class="small muted">실측 · 해석 · 운영 권고 · 미확인을 구분합니다. 수치는 SLA가 아닙니다.</p>
+  <p class="small muted">측정 결과와 운영 권고를 구분합니다. 수치는 SLA가 아닙니다.</p>
 </aside>
 <main id="content">
 <header id="top">
   <div class="eyebrow">AZURE DATABASE FOR POSTGRESQL</div>
   <h1>Elastic Clusters MVU<br>구조부터 검증 결과까지</h1>
   <p class="lead">장표를 내려받지 않아도, 관심 있는 카테고리에서 실험 조건과 결과, 운영 판단 기준을 함께 확인할 수 있는 가이드입니다.</p>
-  <span class="badge">17개 슬라이드 → 13개 카테고리</span>
+  <span class="badge">11개 카테고리</span>
   <span class="badge">Public Preview 검증 기록</span>
   <p class="small muted">자료 기준: 2026-10-25 실측 / 웹 구성: 2026-10-26. 현재 제품 지원 상태를 보장하는 실시간 문서는 아닙니다.</p>
 </header>
 <p id="empty" hidden>일치하는 내용이 없습니다. 다른 검색어를 입력하거나 검색어를 지워 전체 목록을 확인하세요.</p>
 
 <section class="section" id="overview" data-slides="1">
-  <div class="section-head"><span class="eyebrow">01 / OVERVIEW</span><span class="badge observed">실측 + 해석</span></div>
+  <div class="section-head"><span class="eyebrow">01 / OVERVIEW</span><span class="badge observed">측정 결과</span></div>
   <h2>가치는 Migration 단순화, 판단 기준은 Application 복구</h2>
   <p>MVU는 기존 Elastic Cluster의 PostgreSQL Major Version을 in-place로 올려 새 Cluster 생성과 Distributed Data Migration 부담을 줄입니다. <strong>Zero Downtime 기능을 의미하지는 않습니다.</strong></p>
   <div class="cards">
     <article class="card"><div class="number">420.4 s</div><h3>Direct Read</h3><p class="small">5432 경로의 관측 중단</p></article>
     <article class="card"><div class="number">261.5 s</div><h3>PgBouncer Write</h3><p class="small">6432 경로의 관측 중단</p></article>
     <article class="card"><div class="number">약 17 min</div><h3>Request → Ready</h3><p class="small">Control-plane 작업 구간</p></article>
-    <article class="card"><div class="number">382.9 s</div><h3>신규 Entra Login</h3><p class="small">재접속 이후 별도 인증 장애</p></article>
   </div>
   <div class="callout"><strong>Reconnect ≠ Ready ≠ Application Recovery</strong><br>이번 테스트는 실제 업무 Request/SLO를 측정하지 않았습니다. 약 7분은 DB 연결 실패를 사용한 proxy이며, 고객 Application 중단 시간으로 확정할 수 없습니다.</div>
   <p>1회·2-node·소규모 데이터·HA 미사용 환경입니다. Typical Range, 중단 상한 또는 SLA로 일반화하지 않습니다.</p>
-  <div class="link-grid"><a href="#environment">실험 조건부터 보기 →</a><a href="#findings">재접속 이후 이상 현상 →</a><a href="#runbook">운영 적용 순서 →</a></div>
+  <div class="link-grid"><a href="#environment">실험 조건부터 보기 →</a><a href="#findings">서비스 재개 점검 →</a><a href="#runbook">운영 적용 순서 →</a></div>
   <p class="source">PPTX Slide 01 · Customer-visible MVU Downtime</p>
 </section>
 
@@ -219,25 +216,17 @@ footer{font-size:13px;color:var(--cp-text-soft)}.top-link{float:right}
     <article class="card"><h3>Citus</h3><p>13.3 → 14.1</p><p class="small">Target Engine에 맞는 Extension, Planner / Executor, DDL / Distributed Transaction</p></article>
     <article class="card"><h3>Cluster State</h3><p>Metadata · Placement</p><p class="small">Node / Shard, Reference Table, Colocation, Connectivity, HA / Replica</p></article>
   </div>
-  <p><span class="badge observed">이번 실측</span> Endpoint, Topology, SKU, Storage, Public Access와 Shard Placement가 유지됐으며 Node Connectivity는 4/4였습니다. 다만 version-only 요청에서 Entra Auth 설정 초기화를 관찰했습니다.</p>
-  <details><summary>일반 MVU 문서의 흐름과 이번 실측의 경계</summary><p>일반 MVU 문서는 Precheck → Implicit Backup → pg_upgrade → 오류 시 이전 버전 복구 시도 흐름을 설명합니다. Elastic 내부의 Node Shutdown 순서, pg_upgrade 시작/종료, Disk Copy / Clone 방식, 임시 Compute / Storage, DNS 내부 Target, HA Sequencing은 이번 테스트에서 확인하지 못했습니다.</p></details>
-  <details><summary>Rollback과 복구는 검증했나요?</summary><p>장표는 성공 후 in-place rollback이 없는 것으로 설명합니다. PITR / 새 Cluster 복구를 검토해야 하지만, 이번 테스트에서는 Rollback과 PITR 복구 모두 시험하지 않았습니다. 별도 복구 Rehearsal이 필요합니다.</p></details>
+  <p><span class="badge observed">이번 실측</span> Endpoint, Topology, SKU, Storage와 Shard Placement가 유지됐으며 Node Connectivity는 4/4였습니다.</p>
+  <p>복구 절차는 운영 전 별도로 Rehearsal해야 합니다. 이번 측정 범위에는 Rollback, PITR 복구와 HA 복구가 포함되지 않았습니다.</p>
   <p class="source">PPTX Slides 06–07 · In-place Upgrade / Engine · Citus · Metadata Compatibility</p>
 </section>
 
 <section class="section" id="support" data-slides="8">
   <div class="section-head"><span class="eyebrow">05 / ELIGIBILITY</span><span class="badge observed">검증 당시 상태</span></div>
-  <h2>Version · Region · 실행 Interface</h2>
+  <h2>이번 시험에서 확인한 Upgrade Path</h2>
   <div class="callout"><strong>Engine Version 지원 ≠ Source → Target MVU Path 지원</strong><br>PG18 Cluster 생성이 가능하더라도 모든 PG17 / Citus 조합의 Upgrade가 가능하다는 뜻은 아닙니다.</div>
-  <p>확인된 경로: <strong>PG 17.11 + Citus 13.3 → PG 18.6 + Citus 14.1</strong>. ARM PATCH <code>2026-04-01-preview</code>를 사용했습니다.</p>
-  <div class="table-wrap"><table><caption>Region별 관측 결과 — 지원 Region 전체 목록이 아님</caption><thead><tr><th>Region</th><th>결과</th><th>해석 범위</th></tr></thead><tbody>
-    <tr><td>Japan East</td><td>Upgrade 성공</td><td>주요 부하 테스트 Region</td></tr>
-    <tr><td>Canada Central</td><td>Upgrade 성공</td><td>해당 시험 구성에서 확인</td></tr>
-    <tr><td>Southeast Asia</td><td>Upgrade 성공</td><td>해당 시험 구성에서 확인</td></tr>
-    <tr><td>Korea Central</td><td>요청 수락 후 PG17 유지</td><td>원인·공식 지원 일정 미확인</td></tr>
-    <tr><td>East US 2</td><td>평가 불가</td><td>SKU / 생성 문제로 MVU 평가 못함</td></tr>
-  </tbody></table></div>
-  <ul><li>Portal Upgrade 메뉴: 검증 당시 확인하지 못함.</li><li>CLI <code>upgrade --validate-only</code>: Elastic Cluster 대상으로 Client-side 차단.</li><li>Elastic 전용 Precheck API: 검증 당시 사용 불가.</li><li>GA Interface와 지원 조합: 별도 확인 필요.</li></ul>
+  <p>확인된 경로: <strong>PG 17.11 + Citus 13.3 → PG 18.6 + Citus 14.1</strong>. 이 페이지의 주요 부하 측정은 Japan East 2-node 환경에서 수행했습니다.</p>
+  <p>실제 적용 전에는 공식 문서에서 사용 Region, Source / Target Version, Extension 호환성과 현재 제공되는 실행 방법을 확인해야 합니다. 이 시험 결과는 제품 지원 목록을 대신하지 않습니다.</p>
   <p class="source">PPTX Slide 08 · Version Support &amp; Upgrade Eligibility</p>
 </section>
 
@@ -248,7 +237,6 @@ footer{font-size:13px;color:var(--cp-text-soft)}.top-link{float:right}
     <tr><th scope="row">Cluster</th><td>2 Nodes · D2ds_v5 · 2 vCore · Storage 32 GiB · HA 미사용</td></tr>
     <tr><th scope="row">Version</th><td>PostgreSQL 17.11 → 18.6 / Citus 13.3 → 14.1</td></tr>
     <tr><th scope="row">Data</th><td>1,402,000 Rows · 32 Distributed Shards · Node당 약 200 MB</td></tr>
-    <tr><th scope="row">Auth / Network</th><td>Microsoft Entra Only · Public Access + Firewall Rule</td></tr>
     <tr><th scope="row">Client</th><td>Cloud Shell · 실패 후 즉시 Reconnect</td></tr>
     <tr><th scope="row">Sampling / Timeout</th><td>Write 설정 0.2 s (실효 약 0.33–0.5 s), Read 0.5 s / Connection 3 s, Statement 5 s</td></tr>
   </tbody></table></div>
@@ -272,52 +260,41 @@ footer{font-size:13px;color:var(--cp-text-soft)}.top-link{float:right}
     <h3>관측된 중단 길이 비교</h3>
     <div class="bar-row"><span>Direct Read 5432</span><div class="track"><div class="bar" style="width:100%"></div></div><strong>420.4 s</strong></div>
     <div class="bar-row"><span>PgBouncer Write</span><div class="track"><div class="bar" style="width:62.2%"></div></div><strong>261.5 s</strong></div>
-    <div class="bar-row"><span>신규 Entra Login</span><div class="track"><div class="bar" style="width:91.1%"></div></div><strong>382.9 s</strong></div>
-    <figcaption>막대는 중단 길이만 비교합니다. 같은 시점에 시작한 구간이 아닙니다. 특히 Auth 장애는 DB Reconnect 이후 발생한 별도 구간입니다.</figcaption>
+    <figcaption>막대는 중단 길이만 비교합니다. 같은 시점에 시작한 구간이 아닙니다. 서로 다른 연결 경로의 관측값이며 일반적인 성능 우위를 뜻하지 않습니다.</figcaption>
   </figure>
   <div class="table-wrap"><table><caption>경로별 타임라인 — 원문 기록 시각 (시간대는 이 가이드에서 확인하지 못함)</caption><thead><tr><th>구분</th><th>시작 / 경계</th><th>회복 / 종료</th><th>해석</th></tr></thead><tbody>
     <tr><td>Control Plane</td><td>13:42:46</td><td>13:59:38 Ready</td><td>약 17분, DB Outage와 별도</td></tr>
     <tr><td>Direct 5432 / 7432 / Shard</td><td>약 13:46:09</td><td>약 13:53:09–10</td><td>419.9–421.4 s / Read 420.4 s</td></tr>
     <tr><td>PgBouncer 6432</td><td>13:49:03</td><td>13:53:24</td><td>261.5 s, Direct와 시작 시점 다름</td></tr>
-    <tr><td>신규 Entra Login</td><td>13:57:14</td><td>14:03:37</td><td>382.9 s / 기존 Session은 유지</td></tr>
   </tbody></table></div>
   <p>요청 시작에서 첫 Direct 장애까지 약 3분 23초였으나, <strong>13:45:08–13:45:47의 39초는 측정 공백</strong>입니다. 전체 구간이 무중단이었다고 단정하지 않습니다.</p>
   <p class="source">PPTX Slide 10 · Direct Paths Down 420 s, PgBouncer 261.5 s</p>
 </section>
 
-<section class="section" id="findings" data-slides="11" data-keywords="인증 데이터 로그 정합성 auth data logs">
-  <div class="section-head"><span class="eyebrow">08 / RECOVERY FINDINGS</span><span class="badge observed">관측과 추론 분리</span></div>
-  <h2>Reconnect 이후 확인한 Data · Auth · Logs</h2>
-  <details open><summary>Data: COMMIT 응답을 받은 분산 쓰기 20건이 이후 조회되지 않음</summary>
-    <p><strong>관측:</strong> 13:53:09.5–13:53:16.6 사이 Distributed Write 20건이 해당됩니다. 기존 1,402,000 Rows는 보존됐습니다. Shell Table Statistics는 Node 1에 17 Rows, Node 2에 3 Rows였습니다.</p>
-    <p><strong>추론:</strong> Metadata 준비 전에 Shell Table에 쓰기가 기록됐을 가능성입니다. 누락 ID의 실제 Row-level 존재 여부, 근본 원인, 공식 복구 절차는 미확인입니다. 원인을 확정하거나 제품 전반의 데이터 손실로 일반화하지 않습니다.</p>
-  </details>
-  <details open><summary>Auth: version-only PATCH 이후 신규 Entra Login 실패</summary>
-    <p><strong>관측:</strong> 13:57:07.9에 pgaadauth 관련 설정 9개가 Default로 초기화됐습니다. 기존 Session은 유지됐지만 신규 Login은 실패했습니다. 14:03:16 재활성화 후 14:03:37 정상화됐습니다.</p>
-    <p><strong>별도 시험:</strong> PATCH에 <code>authConfig</code>를 포함한 1회 시험에서는 설정이 유지됐습니다. 모든 환경에 대한 해결 보장이 아니며, 의도된 동작인지 Bug인지도 제품팀 확인이 필요합니다.</p>
-  </details>
-  <details><summary>Node: 함께 Restart된 것으로 관측되지만 내부 순서는 미확인</summary><p>PG18 시작 시각은 Node 1 13:53:09, Node 2 13:53:13입니다. 두 Node를 함께 내린 것으로 해석했지만 내부 Orchestration Sequence나 Rolling 여부를 공식 동작으로 확정하지 않습니다.</p></details>
-  <details><summary>Logs: Upgrade 내부 단계의 가시성 제한</summary><p>Activity Log에서 요청 시작/수락은 확인했으나 최종 Success / Failure Event는 확보하지 못했습니다. Log Analytics는 Node 2 13:53:25 이후, Node 1 13:54:20 이후 확보됐고 Shutdown / pg_upgrade / Startup 구간 로그는 확보하지 못했습니다.</p><p>운영 증적은 <code>Azure-AsyncOperation</code>, Resource State와 Client Probe를 함께 수집하는 방식으로 보완합니다.</p></details>
+<section class="section" id="findings" data-slides="13" data-keywords="인증 데이터 정합성 auth data">
+  <div class="section-head"><span class="eyebrow">08 / SERVICE ACCEPTANCE</span><span class="badge">운영 권고</span></div>
+  <h2>서비스 재개 전 확인할 항목</h2>
+  <p>DB 연결 성공과 Application의 정상 동작은 서로 다른 점검 항목입니다. 운영 환경에서는 아래 항목을 확인한 뒤 트래픽을 단계적으로 재개하는 절차를 권고합니다.</p>
   <div class="flow">
     <div class="card"><div class="step">GATE 1</div><h3>Ready</h3><p class="small">Async 성공 + Resource 상태</p></div>
     <div class="card"><div class="step">GATE 2</div><h3>Metadata / Data</h3><p class="small">Placement + Write / Read-back</p></div>
     <div class="card"><div class="step">GATE 3</div><h3>Authentication</h3><p class="small">Entra 신규 Login 확인</p></div>
     <div class="card"><div class="step">GATE 4</div><h3>Application</h3><p class="small">대표 Transaction + SLO</p></div>
   </div>
-  <p class="source">PPTX Slide 11 · Reconnect ≠ Ready: Data · Auth · Logs</p>
+  <p class="source">서비스 재개 점검 · 운영 준비 권고</p>
 </section>
 
 <section class="section" id="blockers" data-slides="12">
   <div class="section-head"><span class="eyebrow">09 / BLOCKER TESTS</span><span class="badge observed">별도 1-node 시험</span></div>
-  <h2>Upgrade가 실행되지 않아도 원인이 충분히 반환되지 않을 수 있음</h2>
-  <p>Japan East 1-node PG17.11 Cluster에 7가지 Blocker를 함께 구성했습니다: Logical Replication Slot, Prepared Transaction, pg_stat_activity 의존 View, pg_stat_statements 의존 View, User Event Trigger, hypopg, pg_diskann.</p>
+  <h2>사전 점검 대상과 시험 범위</h2>
+  <p>별도 1-node 시험에서 Logical Replication Slot, Prepared Transaction, 의존 View, Event Trigger와 Extension 등의 점검 대상을 함께 구성했습니다. 운영에서는 공식 문서의 Upgrade 사전 점검 목록과 고객 구성을 대조해야 합니다.</p>
   <div class="table-wrap"><table><thead><tr><th>Trial</th><th>조건</th><th>관측 결과</th></tr></thead><tbody>
-    <tr><td>1</td><td>Blocker 7개 존재</td><td>2분 36초 후 Ready · PG17 유지. 중단 없음, Activity Log 최종 결과 미확보</td></tr>
-    <tr><td>2</td><td>동일 조건 + Async 추적</td><td>약 1분 18초–1분 44초 사이 Failed. InternalServerError / Tracking ID만 반환. 접속 40회 성공</td></tr>
-    <tr><td>3</td><td>Blocker 제거 + authConfig 포함</td><td>약 13분 내 PG18.6, Entra Auth 유지, 연결 불가 약 6분 25초</td></tr>
+    <tr><td>1</td><td>사전 점검 대상 객체 존재</td><td>2분 36초 후 Ready · PG17 유지. 측정 중 연결 중단 없음</td></tr>
+    <tr><td>2</td><td>동일 객체 구성 + 작업 상태 추적</td><td>작업 실패 확인. 접속 40회 성공</td></tr>
+    <tr><td>3</td><td>객체 제거와 요청 구성 변경 후 재시험</td><td>약 13분 내 PG18.6 확인, 연결 불가 약 6분 25초</td></tr>
   </tbody></table></div>
-  <div class="callout">7개를 함께 구성한 시험이므로 개별 Blocker의 기여도를 확정하지 않습니다. Trial 3도 두 변수를 동시에 바꿨습니다. “Ready”만 보고 Upgrade 성공으로 판단하지 말고 실제 Version과 Async 결과를 함께 확인해야 합니다.</div>
-  <p class="source">PPTX Slide 12 · Blockers Stop the Upgrade — Silently</p>
+  <div class="callout">복수 조건을 함께 변경한 시험이므로 개별 객체의 영향이나 성공 원인을 확정하지 않습니다. 작업 완료 여부와 실제 Engine Version을 함께 확인해야 합니다.</div>
+  <p class="source">PPTX Slide 12 · 사전 점검 시험</p>
 </section>
 
 <section class="section" id="runbook" data-slides="13" data-keywords="인증 점검 체크리스트 운영 준비 절차">
@@ -337,13 +314,13 @@ footer{font-size:13px;color:var(--cp-text-soft)}.top-link{float:right}
   </ul></details>
   <details open><summary>DURING · Change Control</summary><ul class="checks">
     <li><label><input type="checkbox"><span>MVU 요청 전에 Application Write 중지, DDL / Rebalance / Scale / 대형 Batch 회피</span></label></li>
-    <li><label><input type="checkbox"><span>authConfig 명시를 Rehearsal에서 검증하고 요청 전후 Auth 설정 비교</span></label></li>
+    <li><label><input type="checkbox"><span>공식 실행 절차에 따라 요청을 준비하고, 변경 전후 인증과 연결 설정 점검</span></label></li>
     <li><label><input type="checkbox"><span>Azure-AsyncOperation + Resource State + Client Probe 동시 추적</span></label></li>
     <li><label><input type="checkbox"><span>Request → Ready 전체 변경 구간 관리. 이번 약 17분을 상한이나 일반값으로 사용하지 않음</span></label></li>
   </ul></details>
   <details open><summary>POST · Cluster / Application Acceptance</summary><ul class="checks">
     <li><label><input type="checkbox"><span>Async 성공, Resource Ready, 모든 Node의 PG / Citus Version 확인</span></label></li>
-    <li><label><input type="checkbox"><span>Metadata / Shard Placement / Reference Table / Colocation / Shell Table 확인</span></label></li>
+    <li><label><input type="checkbox"><span>Metadata / Shard Placement / Reference Table / Colocation 확인</span></label></li>
     <li><label><input type="checkbox"><span>Distributed Write / Read-back, 신규 Entra Login과 HA / Replica / CDC 확인</span></label></li>
     <li><label><input type="checkbox"><span>ANALYZE 후 Query Plan / Latency / Error Rate / 대표 Transaction 비교</span></label></li>
     <li><label><input type="checkbox"><span>Application SLO와 Data 검증을 통과한 후 Write / Batch 단계적 재개</span></label></li>
@@ -352,60 +329,22 @@ footer{font-size:13px;color:var(--cp-text-soft)}.top-link{float:right}
   <p class="source">PPTX Slide 13 · Readiness &amp; Acceptance Criteria</p>
 </section>
 
-<section class="section" id="questions" data-slides="14" data-keywords="인증 질문 미확인 이슈 FAQ">
-  <div class="section-head"><span class="eyebrow">11 / QUESTIONS</span><span class="badge pending">제품팀 확인 필요</span></div>
-  <h2>고객 FAQ와 아직 답이 확정되지 않은 질문</h2>
-  <details><summary>Q. DB 접속이 되면 바로 Write를 열어도 되나요?</summary><p>권고하지 않습니다. Resource Ready 이후 Metadata / Data Consistency / 신규 Auth / Application SLO 검증까지 통과한 후 재개하는 절차를 제안합니다.</p></details>
-  <details><summary>Q. 예상 중단 시간을 7분으로 안내해도 되나요?</summary><p>아니요. 7분은 한 환경의 DB Outage Proxy입니다. 실제 업무 중단, HA 복구, 대규모 데이터 또는 다른 Workload에 대한 예측값이 아닙니다. 고객 환경 Rehearsal로 변경 창을 정해야 합니다.</p></details>
-  <div class="table-wrap"><table><caption>Open Items — 원인이나 일정이 확정된 항목이 아님</caption><thead><tr><th>카테고리</th><th>제품팀에 확인할 질문</th><th>운영 영향</th></tr></thead><tbody>
-    <tr><td>Entra Auth</td><td>version-only PATCH의 Auth 초기화가 의도된 동작인가?</td><td>authConfig와 재활성화 절차</td></tr>
-    <tr><td>Shell Table Writes</td><td>Metadata 준비 전 Write 수락 여부와 공식 확인 / 복구 방법은?</td><td>Write Resume Gate, Consistency</td></tr>
-    <tr><td>Validation</td><td>전용 API / Portal Validate와 Blocker 상세 오류를 제공하는가?</td><td>Pre-check와 실패 원인 진단</td></tr>
-    <tr><td>Korea Central</td><td>요청 수락 후 PG17 유지 원인과 공식 지원 일정은?</td><td>Region 선택, 고객 PoC</td></tr>
-    <tr><td>Logs</td><td>Shutdown → pg_upgrade → Startup 로그를 확인할 공식 경로는?</td><td>증적 수집, 장애 분석</td></tr>
-    <tr><td>GA Interface</td><td>정식 Portal / CLI / API Version과 실행 절차는?</td><td>자동화와 운영 표준화</td></tr>
-  </tbody></table></div>
-  <p>문의: <a href="mailto:choyujin@microsoft.com?subject=Elastic%20Clusters%20MVU%20Inquiry">Yujin Cho · choyujin@microsoft.com</a></p>
-  <p class="source">PPTX Slide 14 · Open Items for Product Team / FAQ는 관련 실측과 운영 권고를 재구성</p>
-</section>
-
-<section class="section" id="comparison" data-slides="15,17">
-  <div class="section-head"><span class="eyebrow">12 / COMPARISON</span><span class="badge">장표 기반 참고</span></div>
-  <h2>서비스 선택과 Upgrade 방식은 별개의 비교</h2>
-  <div class="table-wrap"><table><caption>서비스 설계 관점 — 성능 Benchmark가 아님</caption><thead><tr><th>서비스</th><th>설계 관점</th><th>검토할 점</th></tr></thead><tbody>
-    <tr><td>Elastic Clusters</td><td>PostgreSQL + Citus · Shard-key Driven</td><td>Distribution Key / Colocation, Extension 호환성</td></tr>
-    <tr><td>Aurora Limitless</td><td>Aurora PostgreSQL-compatible Distributed Model</td><td>SQL / Function / 비용 제약을 Workload별 확인</td></tr>
-    <tr><td>Aurora DSQL</td><td>Serverless Distributed SQL · Strong Consistency 지향</td><td>PostgreSQL Engine Control / Extension 의존성 확인</td></tr>
-  </tbody></table></div>
-  <div class="table-wrap"><table><caption>Major Upgrade Path 비교</caption><thead><tr><th>방식</th><th>전환 모델</th><th>중단 시간 해석</th></tr></thead><tbody>
-    <tr><td>Elastic · MVU 이전 방식</td><td>새 Cluster + pg_dump / pg_restore, pgcopydb 등 Migration</td><td>Data Migration과 Endpoint 전환 계획 필요</td></tr>
-    <tr><td>Elastic · MVU Preview</td><td>기존 Cluster In-place</td><td>이번 Direct 약 420 s / Request → Ready 약 17 min</td></tr>
-    <tr><td>Aurora PostgreSQL · In-place</td><td>Engine Upgrade</td><td>장표에 동등 조건의 실측 수치 없음</td></tr>
-    <tr><td>Aurora PostgreSQL · Blue/Green</td><td>Green 생성 / 동기화 후 Switchover</td><td>Switchover와 전체 준비 시간을 구분해야 함</td></tr>
-    <tr><td>Aurora Limitless</td><td>장표 조사 당시 Major Upgrade Path 미확인</td><td>최신 AWS 문서에서 별도 확인</td></tr>
-  </tbody></table></div>
-  <p class="small muted">다른 서비스의 공개 설명과 이번 Elastic 1회 실측을 직접 성능 비교로 해석하지 않습니다. AWS 기능, 제약, 지원 Version과 Upgrade 절차는 최신 공식 문서 확인이 필요합니다.</p>
-  <p class="source">PPTX Slides 15, 17 · Elastic vs Aurora Limitless vs DSQL / Major Upgrade Paths &amp; Downtime</p>
-</section>
-
 <section class="section" id="references" data-slides="16">
-  <div class="section-head"><span class="eyebrow">13 / REFERENCE</span><span class="badge">용어 · 근거</span></div>
+  <div class="section-head"><span class="eyebrow">11 / REFERENCE</span><span class="badge">용어 · 근거</span></div>
   <h2>용어와 자료 범위</h2>
   <div class="table-wrap"><table><thead><tr><th>용어</th><th>의미</th></tr></thead><tbody>
     <tr><td>MVU</td><td>Major Version Upgrade</td></tr>
     <tr><td>Coordinator / Worker</td><td>Distributed Execution 조정 / Shard 실행 역할</td></tr>
     <tr><td>Shard</td><td>분산 테이블의 데이터 조각</td></tr>
-    <tr><td>Shell Table</td><td>Distributed Table 원래 이름 위치의 Local Table</td></tr>
     <tr><td>PgBouncer</td><td>Connection Pooler</td></tr>
-    <tr><td>pgaadauth</td><td>Microsoft Entra Login 관련 Extension</td></tr>
     <tr><td>ARM PATCH</td><td>ARM Resource Property 변경 요청</td></tr>
     <tr><td>Azure-AsyncOperation</td><td>비동기 작업 상태를 추적하는 URL</td></tr>
     <tr><td>PITR</td><td>Point-in-time Restore</td></tr>
   </tbody></table></div>
-  <p><strong>기준 자료:</strong> Elastic_Cluster_MVU_Customer_Impact_2026-10-23_v3.pptx, 총 17개 슬라이드. 각 카테고리 아래 원본 슬라이드 번호를 표시했습니다. 그림은 장표의 개념을 웹용으로 재구성한 것이며 원본 스크린샷은 아닙니다.</p>
-  <p><strong>자료 구분:</strong> 실측은 해당 시험에서 관찰한 결과, 추론은 원인 / 내부 동작에 대한 해석, 운영 권고는 고객 환경에서 추가 검증할 제안, 미확인은 제품팀 또는 최신 문서 확인이 필요한 항목입니다.</p>
+  <p><strong>자료 범위:</strong> 2026-10-25 수행한 검증의 환경과 측정 결과를 정리했습니다. 그림은 구조 개념을 웹용으로 재구성한 것이며 실제 리소스 화면이나 물리 배치를 나타내지 않습니다.</p>
+  <p><strong>자료 구분:</strong> 측정 결과는 해당 시험 조건의 관측값이며, 운영 권고는 고객 환경에서 별도로 검증할 준비 절차입니다. 수치와 권고는 제품 SLA나 공식 지원 범위를 대체하지 않습니다.</p>
   <p>공개 참고: <a href="https://azure.microsoft.com/ko-kr/updates?id=571504rs" target="_blank" rel="noopener noreferrer">Azure Updates</a> · <a href="https://learn.microsoft.com/azure/postgresql/elastic-clusters/" target="_blank" rel="noopener noreferrer">Elastic Clusters 공식 문서</a></p>
-  <p class="small muted">Azure Updates 링크의 개별 항목 본문은 이번 웹 구성에서 확인하지 못했으므로 최신 지원 여부를 입증하는 출처로 사용하지 않았습니다. 내부 SharePoint 링크, Resource ID와 로그 원문은 이 페이지에 포함하지 않습니다.</p>
+  <p class="small muted">현재 지원 Region, Version과 실행 방법은 최신 공식 제품 문서를 확인하세요.</p>
   <p class="source">PPTX Slide 16 · Sources &amp; Glossary</p>
 </section>
 <footer><a class="top-link" href="#top">맨 위로 ↑</a>Yujin Cho · Independent validation notes<br>제품 SLA나 공식 지원 선언을 대체하지 않습니다.</footer>

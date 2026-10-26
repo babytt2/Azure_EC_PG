@@ -1,163 +1,455 @@
 <!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Azure PostgreSQL Elastic Clusters MVU 검증 가이드</title>
-  <style>
-    :root {
-      --bg: #0b1220;
-      --panel: #121a2b;
-      --text: #e6edf7;
-      --muted: #9fb0cc;
-      --accent: #56b6ff;
-      --ok: #59d499;
-      --warn: #ffd166;
-      --danger: #ff7b7b;
-      --border: #26324b;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: "Segoe UI", Arial, sans-serif;
-      background: linear-gradient(180deg, #0b1220 0%, #0f1728 100%);
-      color: var(--text);
-      line-height: 1.55;
-    }
-    .wrap { max-width: 1080px; margin: 0 auto; padding: 24px; }
-    h1, h2, h3 { margin: 0 0 12px; }
-    .hero, .panel {
-      background: rgba(18, 26, 43, 0.94);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 20px;
-      margin-bottom: 18px;
-    }
-    .meta { color: var(--muted); font-size: 14px; }
-    .summary { color: #dbe7ff; font-size: 17px; margin-top: 10px; }
-    .grid {
-      display: grid;
-      gap: 12px;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    }
-    .kpi {
-      border: 1px solid var(--border);
-      background: #101a2c;
-      border-radius: 12px;
-      padding: 14px;
-    }
-    .kpi .v { font-size: 28px; font-weight: 700; margin-bottom: 4px; }
-    .kpi .k { color: var(--muted); font-size: 13px; }
-    .img-card {
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      background: #0e1728;
-      padding: 10px;
-      margin: 10px 0;
-    }
-    .img-card img { width: 100%; height: auto; display: block; border-radius: 10px; }
-    ul { margin: 8px 0 0 18px; }
-    .tag {
-      display: inline-block;
-      font-size: 12px;
-      color: #001526;
-      background: var(--accent);
-      border-radius: 999px;
-      padding: 3px 10px;
-      margin-right: 6px;
-      font-weight: 700;
-    }
-    details {
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 10px 12px;
-      margin-top: 8px;
-      background: #0f182a;
-    }
-    summary {
-      cursor: pointer;
-      font-weight: 600;
-      color: #dce9ff;
-    }
-    a { color: #8fd0ff; }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Azure PostgreSQL Elastic Clusters MVU: 구조, 검증 환경, 실측 결과, 운영 절차와 미확인 이슈를 카테고리별로 확인하는 가이드.">
+<title>Elastic Clusters MVU | 검증 가이드 · Yujin Cho</title>
+<script>
+(() => {
+  const param = new URLSearchParams(window.location.search).get("scoutTheme");
+  const theme =
+    param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  document.documentElement.setAttribute("data-theme", theme);
+})();
+</script>
+<style>
+:root {
+  color-scheme: light;
+  --cp-bg: #f7f4ef;
+  --cp-bg-elevated: #fcfbf8;
+  --cp-surface: #ffffff;
+  --cp-surface-soft: #f5f5f5;
+  --cp-border: #dedede;
+  --cp-border-strong: #919191;
+  --cp-text: #242424;
+  --cp-text-muted: #5c5c5c;
+  --cp-text-soft: #6f6f6f;
+  --cp-accent: #b11f4b;
+  --cp-accent-hover: #9a1a41;
+  --cp-accent-soft: rgba(177, 31, 75, 0.08);
+  --cp-accent-fg: #ffffff;
+  --cp-success: #16a34a;
+  --cp-danger: #dc2626;
+  --cp-warning: #f59e0b;
+  --cp-link: #0078d4;
+  --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
+  --cp-overlay: rgba(255, 255, 255, 0.8);
+  --cp-panel: rgba(255, 255, 255, 0.86);
+  --cp-panel-strong: rgba(255, 255, 255, 0.96);
+  --cp-sheen: rgba(255, 255, 255, 0.55);
+  --cp-highlight: rgba(177, 31, 75, 0.12);
+}
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --cp-bg: #3d3b3a;
+  --cp-bg-elevated: #343231;
+  --cp-surface: #292929;
+  --cp-surface-soft: #2e2e2e;
+  --cp-border: #474747;
+  --cp-border-strong: #5f5f5f;
+  --cp-text: #dedede;
+  --cp-text-muted: #919191;
+  --cp-text-soft: #b0b0b0;
+  --cp-accent: #fd8ea1;
+  --cp-accent-hover: #fb7b91;
+  --cp-accent-soft: rgba(253, 142, 161, 0.14);
+  --cp-accent-fg: #1a1a1a;
+  --cp-success: #4ade80;
+  --cp-danger: #f87171;
+  --cp-warning: #fbbf24;
+  --cp-link: #4da6ff;
+  --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+  --cp-overlay: rgba(41, 41, 41, 0.88);
+  --cp-panel: rgba(41, 41, 41, 0.72);
+  --cp-panel-strong: rgba(41, 41, 41, 0.96);
+  --cp-sheen: rgba(255, 255, 255, 0.04);
+  --cp-highlight: rgba(253, 142, 161, 0.12);
+}
+*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:24px}
+body{margin:0;background:var(--cp-bg);color:var(--cp-text);font:16px/1.7 "Segoe UI",Aptos,Calibri,-apple-system,BlinkMacSystemFont,sans-serif}
+a{color:var(--cp-link)}button,input{font:inherit}button{cursor:pointer}
+a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid var(--cp-accent);outline-offset:4px}
+.skip{position:absolute;left:16px;top:-100px;background:var(--cp-surface);padding:12px;z-index:10}.skip:focus{top:12px}
+.layout{max-width:1480px;margin:auto;display:grid;grid-template-columns:272px minmax(0,1fr)}
+aside{height:100vh;position:sticky;top:0;padding:28px 20px;overflow:auto;border-right:1px solid var(--cp-border);background:var(--cp-bg-elevated)}
+.brand{font-size:20px;font-weight:750;line-height:1.35}.eyebrow{font-size:12px;letter-spacing:.12em;color:var(--cp-accent);font-weight:700}
+.muted,.source{color:var(--cp-text-soft)}.small,.source{font-size:13px}.source{margin-top:20px}
+nav{display:grid;gap:4px;margin:24px 0}nav a{color:var(--cp-text);text-decoration:none;display:block;padding:8px 12px;border-radius:10px;font-size:14px}
+nav a:hover,nav a[aria-current="location"]{background:var(--cp-accent-soft);color:var(--cp-accent)}
+.search-label{display:block;font-weight:600;font-size:13px;margin-bottom:8px}
+input[type=search]{width:100%;padding:10px 12px;background:var(--cp-surface);color:var(--cp-text);border:1px solid var(--cp-border-strong);border-radius:10px}
+.utility{padding:6px 12px;border:1px solid var(--cp-border);background:var(--cp-surface);color:var(--cp-text);border-radius:10px}
+main{min-width:0;padding:44px 48px 64px}h1{font-size:clamp(28px,4vw,44px);letter-spacing:-.035em;line-height:1.2;margin:12px 0 20px;max-width:850px}
+h2{font-size:26px;line-height:1.35;margin:8px 0 16px}h3{font-size:18px;margin:0 0 8px}p{margin:8px 0 16px}
+header{padding:0 0 28px}.lead{max-width:800px;font-size:18px;color:var(--cp-text-soft)}
+.section{margin-bottom:28px;padding:28px;background:var(--cp-surface);border:1px solid var(--cp-border);border-radius:16px}
+.section[hidden],nav a[hidden]{display:none}.section-head{display:flex;justify-content:space-between;gap:16px;align-items:baseline;flex-wrap:wrap}
+.badge{display:inline-block;font-size:12px;font-weight:650;padding:3px 9px;border:1px solid var(--cp-border);border-radius:8px;background:var(--cp-surface-soft)}
+.observed{color:var(--cp-accent)}.pending{color:var(--cp-text-soft)}
+.callout{padding:16px 20px;background:var(--cp-accent-soft);border-left:4px solid var(--cp-accent);border-radius:0 10px 10px 0;margin:20px 0}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:20px 0}
+.card{border:1px solid var(--cp-border);border-radius:10px;padding:16px;background:var(--cp-bg-elevated);min-width:0}
+.number{font-size:30px;font-weight:750;color:var(--cp-accent);line-height:1.25}.card p{margin:8px 0 0}
+.table-wrap{overflow:auto;margin:16px 0}table{border-collapse:collapse;width:100%;font-size:14px;text-align:left}caption{text-align:left;font-weight:600;margin-bottom:8px}
+th,td{padding:12px;border-bottom:1px solid var(--cp-border);vertical-align:top}th{background:var(--cp-surface-soft);font-weight:650}
+code{font-family:Consolas,"Courier New",Courier,monospace;font-size:.9em;overflow-wrap:anywhere}
+ul,ol{padding-left:24px}li{margin:6px 0}.flow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:20px 0}
+.flow .card{border-top:3px solid var(--cp-accent)}.step{font-size:12px;color:var(--cp-accent);font-weight:700}
+.diagram{margin:20px 0;border:1px solid var(--cp-border);border-radius:10px;padding:20px;background:var(--cp-bg-elevated)}
+.nodes{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}.node{border:1px solid var(--cp-border-strong);border-radius:10px;padding:16px;background:var(--cp-surface)}
+.node strong{display:block;margin-bottom:8px}.chip{display:inline-block;border:1px solid var(--cp-border);padding:4px 8px;margin:4px 4px 0 0;border-radius:6px;font-size:13px}
+figcaption{font-size:13px;color:var(--cp-text-soft);margin-top:12px}
+.bar-row{display:grid;grid-template-columns:155px minmax(0,1fr) 88px;gap:12px;align-items:center;margin:16px 0;font-size:14px}
+.track{height:20px;background:var(--cp-surface-soft);border:1px solid var(--cp-border);border-radius:4px}
+.bar{height:100%;background:var(--cp-accent);border-radius:3px}
+details{border:1px solid var(--cp-border);border-radius:10px;margin:12px 0;padding:14px 16px}summary{cursor:pointer;font-weight:650}
+details p:last-child{margin-bottom:0}.checks{list-style:none;padding:0}.checks label{display:flex;gap:12px;align-items:flex-start;cursor:pointer}.checks input{margin-top:8px;accent-color:var(--cp-accent);flex-shrink:0}
+.checks input:checked+span{text-decoration:line-through;color:var(--cp-text-soft)}#results{min-height:24px;margin-top:8px}#empty{padding:28px;border:1px dashed var(--cp-border-strong);border-radius:16px}
+.link-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.link-grid a{display:block;padding:16px;border:1px solid var(--cp-border);border-radius:10px;text-decoration:none}
+footer{font-size:13px;color:var(--cp-text-soft)}.top-link{float:right}
+@media(max-width:1000px){main{padding:32px 24px}.layout{grid-template-columns:230px minmax(0,1fr)}.flow{grid-template-columns:1fr 1fr}}
+@media(max-width:720px){.layout{display:block}aside{height:auto;position:static;border-right:0;border-bottom:1px solid var(--cp-border);padding:20px}nav{grid-template-columns:1fr 1fr;margin:16px 0}main{padding:24px 16px}.section{padding:20px}.nodes,.flow{grid-template-columns:1fr}.bar-row{grid-template-columns:1fr 64px;gap:4px}.bar-row .track{grid-column:1 / -1;grid-row:auto}.bar-row strong{grid-column:2;grid-row:auto}.number{font-size:26px}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+@media print{aside,.utility,.checks input{display:none}.layout{display:block}main{padding:0}.section{break-inside:avoid}.section[hidden]{display:block}details{break-inside:avoid}}
+</style>
 </head>
 <body>
-  <main class="wrap">
-    <section class="hero">
-      <span class="tag">Customer-facing</span><span class="tag">MVU Validation</span>
-      <h1>Azure PostgreSQL Elastic Clusters MVU 검증 내역</h1>
-      <p class="meta">by Yujin Cho · 기준 자료: Elastic_Cluster_MVU_Customer_Impact_2026-10-23_v3.pptx</p>
-      <p class="summary">
-        이 페이지는 PPTX 검증 내용을 고객이 빠르게 확인할 수 있도록 재구성한 웹 요약본입니다.
-        핵심은 <strong>Migration 없이 Major Version 업그레이드 가능</strong>하다는 장점과,
-        운영 기준은 단순 reconnect가 아니라 <strong>Ready + Data/Auth/App 검증</strong>까지라는 점입니다.
-      </p>
-    </section>
+<a class="skip" href="#content">본문으로 건너뛰기</a>
+<div class="layout">
+<aside aria-label="가이드 탐색">
+  <div class="eyebrow">VALIDATION FIELD GUIDE</div>
+  <div class="brand">Elastic Clusters<br>Major Version Upgrade</div>
+  <p class="small muted">검증 기준일 2026.10.25<br>by Yujin Cho</p>
+  <label class="search-label" for="search">카테고리 · 내용 검색</label>
+  <input id="search" type="search" placeholder="예: 인증, shard, blocker" autocomplete="off">
+  <div id="results" class="small muted" role="status" aria-live="polite"></div>
+  <nav aria-label="카테고리 목록">
+    <a href="#overview">01. 핵심 요약</a>
+    <a href="#architecture">02. Architecture &amp; Citus</a>
+    <a href="#workloads">03. Workload &amp; 설계</a>
+    <a href="#upgrade">04. MVU 동작 &amp; 변경 범위</a>
+    <a href="#support">05. Version · Region · API</a>
+    <a href="#environment">06. 검증 환경 &amp; 측정 방법</a>
+    <a href="#measurements">07. Downtime &amp; 타임라인</a>
+    <a href="#findings">08. Data · Auth · Logs</a>
+    <a href="#blockers">09. Blocker 검증</a>
+    <a href="#runbook">10. 운영 Runbook</a>
+    <a href="#questions">11. FAQ &amp; Open Items</a>
+    <a href="#comparison">12. 서비스 · Upgrade 비교</a>
+    <a href="#references">13. 용어 &amp; 출처</a>
+  </nav>
+  <button class="utility" id="theme" type="button" aria-label="밝은 테마와 어두운 테마 전환">테마 전환</button>
+  <p class="small muted">실측 · 해석 · 운영 권고 · 미확인을 구분합니다. 수치는 SLA가 아닙니다.</p>
+</aside>
+<main id="content">
+<header id="top">
+  <div class="eyebrow">AZURE DATABASE FOR POSTGRESQL</div>
+  <h1>Elastic Clusters MVU<br>구조부터 검증 결과까지</h1>
+  <p class="lead">장표를 내려받지 않아도, 관심 있는 카테고리에서 실험 조건과 결과, 운영 판단 기준을 함께 확인할 수 있는 가이드입니다.</p>
+  <span class="badge">17개 슬라이드 → 13개 카테고리</span>
+  <span class="badge">Public Preview 검증 기록</span>
+  <p class="small muted">자료 기준: 2026-10-25 실측 / 웹 구성: 2026-10-26. 현재 제품 지원 상태를 보장하는 실시간 문서는 아닙니다.</p>
+</header>
+<p id="empty" hidden>일치하는 내용이 없습니다. 다른 검색어를 입력하거나 검색어를 지워 전체 목록을 확인하세요.</p>
 
-    <section class="panel">
-      <h2>1) 실측 핵심 지표</h2>
-      <div class="grid">
-        <article class="kpi"><div class="v" style="color:var(--danger)">~420초</div><div class="k">Direct DB outage</div></article>
-        <article class="kpi"><div class="v" style="color:var(--warn)">261.5초</div><div class="k">PgBouncer outage</div></article>
-        <article class="kpi"><div class="v" style="color:var(--accent)">~17분</div><div class="k">Upgrade 요청 → Ready</div></article>
-        <article class="kpi"><div class="v" style="color:var(--danger)">~383초</div><div class="k">Entra 신규 로그인 장애</div></article>
-      </div>
-      <p class="meta">주의: 위 수치는 Japan East 2-node 환경 1회 실측 결과이며 일반 SLA로 일반화할 수 없습니다.</p>
-    </section>
+<section class="section" id="overview" data-slides="1">
+  <div class="section-head"><span class="eyebrow">01 / OVERVIEW</span><span class="badge observed">실측 + 해석</span></div>
+  <h2>가치는 Migration 단순화, 판단 기준은 Application 복구</h2>
+  <p>MVU는 기존 Elastic Cluster의 PostgreSQL Major Version을 in-place로 올려 새 Cluster 생성과 Distributed Data Migration 부담을 줄입니다. <strong>Zero Downtime 기능을 의미하지는 않습니다.</strong></p>
+  <div class="cards">
+    <article class="card"><div class="number">420.4 s</div><h3>Direct Read</h3><p class="small">5432 경로의 관측 중단</p></article>
+    <article class="card"><div class="number">261.5 s</div><h3>PgBouncer Write</h3><p class="small">6432 경로의 관측 중단</p></article>
+    <article class="card"><div class="number">약 17 min</div><h3>Request → Ready</h3><p class="small">Control-plane 작업 구간</p></article>
+    <article class="card"><div class="number">382.9 s</div><h3>신규 Entra Login</h3><p class="small">재접속 이후 별도 인증 장애</p></article>
+  </div>
+  <div class="callout"><strong>Reconnect ≠ Ready ≠ Application Recovery</strong><br>이번 테스트는 실제 업무 Request/SLO를 측정하지 않았습니다. 약 7분은 DB 연결 실패를 사용한 proxy이며, 고객 Application 중단 시간으로 확정할 수 없습니다.</div>
+  <p>1회·2-node·소규모 데이터·HA 미사용 환경입니다. Typical Range, 중단 상한 또는 SLA로 일반화하지 않습니다.</p>
+  <div class="link-grid"><a href="#environment">실험 조건부터 보기 →</a><a href="#findings">재접속 이후 이상 현상 →</a><a href="#runbook">운영 적용 순서 →</a></div>
+  <p class="source">PPTX Slide 01 · Customer-visible MVU Downtime</p>
+</section>
 
-    <section class="panel">
-      <h2>2) 시각화: 왜 Reconnect ≠ Ready 인가</h2>
-      <div class="img-card">
-        <img src="./timeline.svg" alt="MVU 타임라인 시각화" />
-      </div>
-      <div class="img-card">
-        <img src="./readiness-gate.svg" alt="서비스 재개 전 검증 게이트" />
-      </div>
-    </section>
+<section class="section" id="architecture" data-slides="2,3,4">
+  <div class="section-head"><span class="eyebrow">02 / ARCHITECTURE</span><span class="badge">구조 설명</span></div>
+  <h2>PostgreSQL 안에서 동작하는 Citus</h2>
+  <p>Elastic Clusters는 여러 Flexible Server Node를 Citus로 연결하는 Managed Distributed PostgreSQL입니다. <strong>Citus는 PostgreSQL 앞의 별도 Database Engine이 아니라 각 PostgreSQL Instance 내부의 Extension</strong>입니다.</p>
+  <figure class="diagram">
+    <div class="card"><strong>Application → Cluster Endpoint</strong><br><span class="small">Connection Load Balancing · Optional PgBouncer</span></div>
+    <div class="nodes">
+      <div class="node"><strong>PostgreSQL Node A</strong>PostgreSQL Core + Citus Extension<br><code>pg_dist_*</code> Metadata · Data / WAL<br><span class="chip">Shard A</span><span class="chip">Shard B</span></div>
+      <div class="node"><strong>PostgreSQL Node B</strong>PostgreSQL Core + Citus Extension<br><code>pg_dist_*</code> Metadata · Data / WAL<br><span class="chip">Shard C</span><span class="chip">Shard D</span></div>
+    </div>
+    <figcaption>장표의 구조 설명을 재구성한 개념도입니다. 실제 물리 배치, HA 구성 또는 데이터 복제를 나타내지 않습니다. 일반 Distributed Table의 전체 데이터가 모든 Node에 복제되는 것은 아니며 Reference Table은 별도입니다.</figcaption>
+  </figure>
+  <div class="flow">
+    <div class="card"><div class="step">01 / CONNECTION</div><h3>SQL 수신</h3><p class="small">연결된 Node에서 요청 수신</p></div>
+    <div class="card"><div class="step">02 / PLANNING</div><h3>Shard 탐색</h3><p class="small">Distribution Key와 Metadata로 Placement 확인</p></div>
+    <div class="card"><div class="step">03 / EXECUTION</div><h3>분산 실행</h3><p class="small">Single-shard 또는 여러 Shard에서 Query 실행</p></div>
+    <div class="card"><div class="step">04 / RESULT</div><h3>결과 · Commit</h3><p class="small">Aggregation, 필요 시 Distributed Commit Coordination</p></div>
+  </div>
+  <div class="table-wrap"><table><caption>Connection Path 구분</caption><thead><tr><th>Port</th><th>역할</th></tr></thead><tbody>
+    <tr><td>5432</td><td>Coordinator SQL · DDL / Cluster Operations</td></tr>
+    <tr><td>6432</td><td>5432의 PgBouncer Pooled Path</td></tr>
+    <tr><td>7432</td><td>Any-node DML Path</td></tr>
+    <tr><td>8432</td><td>7432의 Pooled Path</td></tr>
+  </tbody></table></div>
+  <p class="source">PPTX Slides 02–04 · Elastic Clusters / Citus Extension / Routing → Execution → Aggregation</p>
+</section>
 
-    <section class="panel">
-      <h2>3) 운영 체크리스트(요약)</h2>
-      <div class="img-card">
-        <img src="./runbook-flow.svg" alt="업그레이드 운영 플로우" />
-      </div>
-      <ul>
-        <li><strong>사전:</strong> blocker pre-check, rehearsal, probe 준비, authConfig 포함</li>
-        <li><strong>진행:</strong> write 중지, async 상태 추적, 요청~Ready 전체 구간 관리</li>
-        <li><strong>사후:</strong> version/metadata/consistency/auth/SLO 확인 후 단계적 write 재개</li>
-      </ul>
-    </section>
+<section class="section" id="workloads" data-slides="5">
+  <div class="section-head"><span class="eyebrow">03 / WORKLOAD DESIGN</span><span class="badge">설계 고려사항</span></div>
+  <h2>어떤 Workload에 적합한가</h2>
+  <div class="table-wrap"><table><thead><tr><th>Workload</th><th>설계 모델</th><th>확인할 점</th></tr></thead><tbody>
+    <tr><td>Shared-table SaaS</td><td>Tenant Key Row Sharding · Colocation</td><td>PK/FK, Hot Tenant, Cross-shard Write</td></tr>
+    <tr><td>Schema-per-tenant</td><td>Schema Sharding</td><td>search_path, Schema 수, Cross-schema SQL</td></tr>
+    <tr><td>IoT / Event</td><td>Entity 기반 Distributed Ingestion</td><td>Hot Key, Index, Batch</td></tr>
+    <tr><td>Real-time Analytics</td><td>Parallel SQL · Distributed Aggregation</td><td>Fan-out, Shuffle, Memory, OLTP 경합</td></tr>
+  </tbody></table></div>
+  <p>Distribution Key Predicate와 Table Colocation은 Network Round Trip과 Cross-shard 연산을 줄이는 데 유리합니다. 반대로 Fan-out과 Data Movement는 비용을 늘릴 수 있습니다.</p>
+  <div class="callout">테이블 생성만으로 자동 분산되는 것은 아닙니다. MVU도 잘못된 Shard Key, Hot Shard 또는 SQL Compatibility 문제를 해결하지 않습니다.</div>
+  <p class="small muted">장표에 기재된 제약: Node-count Scale-in, Single User Database, Extension / SQL / 관리 기능 제약. 실제 적용 시 최신 제품 문서를 확인해야 합니다.</p>
+  <p class="source">PPTX Slide 05 · Data Locality · Sharding · Parallel SQL</p>
+</section>
 
-    <section class="panel">
-      <h2>4) 고객 Q&A / 확인이 필요한 이슈</h2>
-      <details>
-        <summary>Q1. 업그레이드 후 Entra 인증이 꺼질 수 있나요?</summary>
-        <p>실측에서 version-only 요청 시 Entra auth 초기화 이슈를 관찰했습니다. 요청에 authConfig를 명시하고, 업그레이드 후 신규 로그인 검증이 필요합니다.</p>
-      </details>
-      <details>
-        <summary>Q2. DB 연결이 되면 바로 서비스 재개해도 되나요?</summary>
-        <p>아니요. Ready, shard/metadata, distributed write consistency, auth, app SLO까지 확인한 뒤 재개해야 합니다.</p>
-      </details>
-      <details>
-        <summary>Q3. 현재 단계에서 가장 중요한 운영 포인트는?</summary>
-        <p>Public Preview 단계에서는 pre-check → rehearsal → controlled upgrade → post-validation을 표준 절차로 운영하는 것이 핵심입니다.</p>
-      </details>
-      <details>
-        <summary>Q4. 추가 확인이 필요한 Open Item은?</summary>
-        <ul>
-          <li>Entra auth reset 동작 의도 여부</li>
-          <li>재기동 직후 write visibility anomaly 원인</li>
-          <li>Elastic 전용 pre-check/validation API 로드맵</li>
-          <li>Korea Central 지원 상태 및 일정</li>
-        </ul>
-      </details>
-    </section>
+<section class="section" id="upgrade" data-slides="6,7">
+  <div class="section-head"><span class="eyebrow">04 / MVU SCOPE</span><span class="badge">동작 범위</span></div>
+  <h2>무엇이 바뀌고, 무엇을 확인해야 하나</h2>
+  <div class="cards">
+    <article class="card"><h3>PostgreSQL Engine</h3><p>17.11 → 18.6</p><p class="small">Binary, Catalog, SQL / Type / Index / Extension Compatibility와 Statistics / Query Plan</p></article>
+    <article class="card"><h3>Citus</h3><p>13.3 → 14.1</p><p class="small">Target Engine에 맞는 Extension, Planner / Executor, DDL / Distributed Transaction</p></article>
+    <article class="card"><h3>Cluster State</h3><p>Metadata · Placement</p><p class="small">Node / Shard, Reference Table, Colocation, Connectivity, HA / Replica</p></article>
+  </div>
+  <p><span class="badge observed">이번 실측</span> Endpoint, Topology, SKU, Storage, Public Access와 Shard Placement가 유지됐으며 Node Connectivity는 4/4였습니다. 다만 version-only 요청에서 Entra Auth 설정 초기화를 관찰했습니다.</p>
+  <details><summary>일반 MVU 문서의 흐름과 이번 실측의 경계</summary><p>일반 MVU 문서는 Precheck → Implicit Backup → pg_upgrade → 오류 시 이전 버전 복구 시도 흐름을 설명합니다. Elastic 내부의 Node Shutdown 순서, pg_upgrade 시작/종료, Disk Copy / Clone 방식, 임시 Compute / Storage, DNS 내부 Target, HA Sequencing은 이번 테스트에서 확인하지 못했습니다.</p></details>
+  <details><summary>Rollback과 복구는 검증했나요?</summary><p>장표는 성공 후 in-place rollback이 없는 것으로 설명합니다. PITR / 새 Cluster 복구를 검토해야 하지만, 이번 테스트에서는 Rollback과 PITR 복구 모두 시험하지 않았습니다. 별도 복구 Rehearsal이 필요합니다.</p></details>
+  <p class="source">PPTX Slides 06–07 · In-place Upgrade / Engine · Citus · Metadata Compatibility</p>
+</section>
 
-    <section class="panel">
-      <h2>5) 문의</h2>
-      <p>검증 상세(실험 조건, probe 로그, 운영 적용 범위)는 아래로 문의하세요.</p>
-      <p><a href="mailto:choyujin@microsoft.com?subject=Elastic%20Cluster%20MVU%20Validation%20Inquiry">choyujin@microsoft.com</a></p>
-    </section>
-  </main>
+<section class="section" id="support" data-slides="8">
+  <div class="section-head"><span class="eyebrow">05 / ELIGIBILITY</span><span class="badge observed">검증 당시 상태</span></div>
+  <h2>Version · Region · 실행 Interface</h2>
+  <div class="callout"><strong>Engine Version 지원 ≠ Source → Target MVU Path 지원</strong><br>PG18 Cluster 생성이 가능하더라도 모든 PG17 / Citus 조합의 Upgrade가 가능하다는 뜻은 아닙니다.</div>
+  <p>확인된 경로: <strong>PG 17.11 + Citus 13.3 → PG 18.6 + Citus 14.1</strong>. ARM PATCH <code>2026-04-01-preview</code>를 사용했습니다.</p>
+  <div class="table-wrap"><table><caption>Region별 관측 결과 — 지원 Region 전체 목록이 아님</caption><thead><tr><th>Region</th><th>결과</th><th>해석 범위</th></tr></thead><tbody>
+    <tr><td>Japan East</td><td>Upgrade 성공</td><td>주요 부하 테스트 Region</td></tr>
+    <tr><td>Canada Central</td><td>Upgrade 성공</td><td>해당 시험 구성에서 확인</td></tr>
+    <tr><td>Southeast Asia</td><td>Upgrade 성공</td><td>해당 시험 구성에서 확인</td></tr>
+    <tr><td>Korea Central</td><td>요청 수락 후 PG17 유지</td><td>원인·공식 지원 일정 미확인</td></tr>
+    <tr><td>East US 2</td><td>평가 불가</td><td>SKU / 생성 문제로 MVU 평가 못함</td></tr>
+  </tbody></table></div>
+  <ul><li>Portal Upgrade 메뉴: 검증 당시 확인하지 못함.</li><li>CLI <code>upgrade --validate-only</code>: Elastic Cluster 대상으로 Client-side 차단.</li><li>Elastic 전용 Precheck API: 검증 당시 사용 불가.</li><li>GA Interface와 지원 조합: 별도 확인 필요.</li></ul>
+  <p class="source">PPTX Slide 08 · Version Support &amp; Upgrade Eligibility</p>
+</section>
+
+<section class="section" id="environment" data-slides="9">
+  <div class="section-head"><span class="eyebrow">06 / TEST DESIGN</span><span class="badge observed">실측 조건</span></div>
+  <h2>측정 환경과 Probe 구성</h2>
+  <div class="table-wrap"><table><caption>2026-10-25 · Japan East</caption><tbody>
+    <tr><th scope="row">Cluster</th><td>2 Nodes · D2ds_v5 · 2 vCore · Storage 32 GiB · HA 미사용</td></tr>
+    <tr><th scope="row">Version</th><td>PostgreSQL 17.11 → 18.6 / Citus 13.3 → 14.1</td></tr>
+    <tr><th scope="row">Data</th><td>1,402,000 Rows · 32 Distributed Shards · Node당 약 200 MB</td></tr>
+    <tr><th scope="row">Auth / Network</th><td>Microsoft Entra Only · Public Access + Firewall Rule</td></tr>
+    <tr><th scope="row">Client</th><td>Cloud Shell · 실패 후 즉시 Reconnect</td></tr>
+    <tr><th scope="row">Sampling / Timeout</th><td>Write 설정 0.2 s (실효 약 0.33–0.5 s), Read 0.5 s / Connection 3 s, Statement 5 s</td></tr>
+  </tbody></table></div>
+  <div class="table-wrap"><table><thead><tr><th>Probe</th><th>Path</th><th>Workload</th></tr></thead><tbody>
+    <tr><td>local5432</td><td>5432</td><td>Coordinator Local INSERT</td></tr>
+    <tr><td>dist5432</td><td>5432</td><td>Distributed INSERT</td></tr>
+    <tr><td>read5432</td><td>5432</td><td>Tenant Count</td></tr>
+    <tr><td>node_p7000 / 7001</td><td>Node별 5432</td><td>Shard INSERT</td></tr>
+    <tr><td>pgb6432</td><td>6432</td><td>PgBouncer Distributed INSERT</td></tr>
+    <tr><td>lb7432</td><td>7432</td><td>Load-balanced Path</td></tr>
+  </tbody></table></div>
+  <p>Confirmed Write는 SQL 제출이 아니라 <strong>COMMIT 응답 수신</strong>을 기준으로 집계했습니다. 운영 검증에서는 Read-back까지 추가해야 합니다.</p>
+  <div class="callout">측정 한계: 1회 실행, 소규모 Data, HA 미사용, 실제 고객 Workload / SLO 미측정. Stable Recovery의 연속 성공 조건은 적용하지 않았고 Sampling 오차가 있습니다.</div>
+  <p class="source">PPTX Slide 09 · Hands-on Test: 2-node Cluster under Load</p>
+</section>
+
+<section class="section" id="measurements" data-slides="10">
+  <div class="section-head"><span class="eyebrow">07 / MEASUREMENTS</span><span class="badge observed">경로별 실측</span></div>
+  <h2>같은 Upgrade, 서로 다른 중단 구간</h2>
+  <figure class="diagram">
+    <h3>관측된 중단 길이 비교</h3>
+    <div class="bar-row"><span>Direct Read 5432</span><div class="track"><div class="bar" style="width:100%"></div></div><strong>420.4 s</strong></div>
+    <div class="bar-row"><span>PgBouncer Write</span><div class="track"><div class="bar" style="width:62.2%"></div></div><strong>261.5 s</strong></div>
+    <div class="bar-row"><span>신규 Entra Login</span><div class="track"><div class="bar" style="width:91.1%"></div></div><strong>382.9 s</strong></div>
+    <figcaption>막대는 중단 길이만 비교합니다. 같은 시점에 시작한 구간이 아닙니다. 특히 Auth 장애는 DB Reconnect 이후 발생한 별도 구간입니다.</figcaption>
+  </figure>
+  <div class="table-wrap"><table><caption>경로별 타임라인 — 원문 기록 시각 (시간대는 이 가이드에서 확인하지 못함)</caption><thead><tr><th>구분</th><th>시작 / 경계</th><th>회복 / 종료</th><th>해석</th></tr></thead><tbody>
+    <tr><td>Control Plane</td><td>13:42:46</td><td>13:59:38 Ready</td><td>약 17분, DB Outage와 별도</td></tr>
+    <tr><td>Direct 5432 / 7432 / Shard</td><td>약 13:46:09</td><td>약 13:53:09–10</td><td>419.9–421.4 s / Read 420.4 s</td></tr>
+    <tr><td>PgBouncer 6432</td><td>13:49:03</td><td>13:53:24</td><td>261.5 s, Direct와 시작 시점 다름</td></tr>
+    <tr><td>신규 Entra Login</td><td>13:57:14</td><td>14:03:37</td><td>382.9 s / 기존 Session은 유지</td></tr>
+  </tbody></table></div>
+  <p>요청 시작에서 첫 Direct 장애까지 약 3분 23초였으나, <strong>13:45:08–13:45:47의 39초는 측정 공백</strong>입니다. 전체 구간이 무중단이었다고 단정하지 않습니다.</p>
+  <p class="source">PPTX Slide 10 · Direct Paths Down 420 s, PgBouncer 261.5 s</p>
+</section>
+
+<section class="section" id="findings" data-slides="11" data-keywords="인증 데이터 로그 정합성 auth data logs">
+  <div class="section-head"><span class="eyebrow">08 / RECOVERY FINDINGS</span><span class="badge observed">관측과 추론 분리</span></div>
+  <h2>Reconnect 이후 확인한 Data · Auth · Logs</h2>
+  <details open><summary>Data: COMMIT 응답을 받은 분산 쓰기 20건이 이후 조회되지 않음</summary>
+    <p><strong>관측:</strong> 13:53:09.5–13:53:16.6 사이 Distributed Write 20건이 해당됩니다. 기존 1,402,000 Rows는 보존됐습니다. Shell Table Statistics는 Node 1에 17 Rows, Node 2에 3 Rows였습니다.</p>
+    <p><strong>추론:</strong> Metadata 준비 전에 Shell Table에 쓰기가 기록됐을 가능성입니다. 누락 ID의 실제 Row-level 존재 여부, 근본 원인, 공식 복구 절차는 미확인입니다. 원인을 확정하거나 제품 전반의 데이터 손실로 일반화하지 않습니다.</p>
+  </details>
+  <details open><summary>Auth: version-only PATCH 이후 신규 Entra Login 실패</summary>
+    <p><strong>관측:</strong> 13:57:07.9에 pgaadauth 관련 설정 9개가 Default로 초기화됐습니다. 기존 Session은 유지됐지만 신규 Login은 실패했습니다. 14:03:16 재활성화 후 14:03:37 정상화됐습니다.</p>
+    <p><strong>별도 시험:</strong> PATCH에 <code>authConfig</code>를 포함한 1회 시험에서는 설정이 유지됐습니다. 모든 환경에 대한 해결 보장이 아니며, 의도된 동작인지 Bug인지도 제품팀 확인이 필요합니다.</p>
+  </details>
+  <details><summary>Node: 함께 Restart된 것으로 관측되지만 내부 순서는 미확인</summary><p>PG18 시작 시각은 Node 1 13:53:09, Node 2 13:53:13입니다. 두 Node를 함께 내린 것으로 해석했지만 내부 Orchestration Sequence나 Rolling 여부를 공식 동작으로 확정하지 않습니다.</p></details>
+  <details><summary>Logs: Upgrade 내부 단계의 가시성 제한</summary><p>Activity Log에서 요청 시작/수락은 확인했으나 최종 Success / Failure Event는 확보하지 못했습니다. Log Analytics는 Node 2 13:53:25 이후, Node 1 13:54:20 이후 확보됐고 Shutdown / pg_upgrade / Startup 구간 로그는 확보하지 못했습니다.</p><p>운영 증적은 <code>Azure-AsyncOperation</code>, Resource State와 Client Probe를 함께 수집하는 방식으로 보완합니다.</p></details>
+  <div class="flow">
+    <div class="card"><div class="step">GATE 1</div><h3>Ready</h3><p class="small">Async 성공 + Resource 상태</p></div>
+    <div class="card"><div class="step">GATE 2</div><h3>Metadata / Data</h3><p class="small">Placement + Write / Read-back</p></div>
+    <div class="card"><div class="step">GATE 3</div><h3>Authentication</h3><p class="small">Entra 신규 Login 확인</p></div>
+    <div class="card"><div class="step">GATE 4</div><h3>Application</h3><p class="small">대표 Transaction + SLO</p></div>
+  </div>
+  <p class="source">PPTX Slide 11 · Reconnect ≠ Ready: Data · Auth · Logs</p>
+</section>
+
+<section class="section" id="blockers" data-slides="12">
+  <div class="section-head"><span class="eyebrow">09 / BLOCKER TESTS</span><span class="badge observed">별도 1-node 시험</span></div>
+  <h2>Upgrade가 실행되지 않아도 원인이 충분히 반환되지 않을 수 있음</h2>
+  <p>Japan East 1-node PG17.11 Cluster에 7가지 Blocker를 함께 구성했습니다: Logical Replication Slot, Prepared Transaction, pg_stat_activity 의존 View, pg_stat_statements 의존 View, User Event Trigger, hypopg, pg_diskann.</p>
+  <div class="table-wrap"><table><thead><tr><th>Trial</th><th>조건</th><th>관측 결과</th></tr></thead><tbody>
+    <tr><td>1</td><td>Blocker 7개 존재</td><td>2분 36초 후 Ready · PG17 유지. 중단 없음, Activity Log 최종 결과 미확보</td></tr>
+    <tr><td>2</td><td>동일 조건 + Async 추적</td><td>약 1분 18초–1분 44초 사이 Failed. InternalServerError / Tracking ID만 반환. 접속 40회 성공</td></tr>
+    <tr><td>3</td><td>Blocker 제거 + authConfig 포함</td><td>약 13분 내 PG18.6, Entra Auth 유지, 연결 불가 약 6분 25초</td></tr>
+  </tbody></table></div>
+  <div class="callout">7개를 함께 구성한 시험이므로 개별 Blocker의 기여도를 확정하지 않습니다. Trial 3도 두 변수를 동시에 바꿨습니다. “Ready”만 보고 Upgrade 성공으로 판단하지 말고 실제 Version과 Async 결과를 함께 확인해야 합니다.</div>
+  <p class="source">PPTX Slide 12 · Blockers Stop the Upgrade — Silently</p>
+</section>
+
+<section class="section" id="runbook" data-slides="13" data-keywords="인증 점검 체크리스트 운영 준비 절차">
+  <div class="section-head"><span class="eyebrow">10 / OPERATIONAL RUNBOOK</span><span class="badge">운영 권고</span></div>
+  <h2>사전 준비 → 통제된 변경 → 검증 후 Write 재개</h2>
+  <p class="small muted">체크박스는 현재 화면에서만 사용하는 준비 목록입니다. 서버에 저장되지 않으며 새로고침하면 초기화됩니다.</p>
+  <details open><summary>PRE 1 · Inventory &amp; Pre-check</summary><ul class="checks">
+    <li><label><input type="checkbox"><span>PG / Citus Version, Node / SKU / Storage, Table / Sharding Model과 Placement 기록</span></label></li>
+    <li><label><input type="checkbox"><span>모든 Node의 Extension, Slot, Prepared Transaction, Event Trigger 등 Blocker 점검</span></label></li>
+    <li><label><input type="checkbox"><span>HA / Replica, CDC / Jobs, Connection / Pooling, Auth 구성 기록</span></label></li>
+    <li><label><input type="checkbox"><span>복구 방식, 허용 RPO와 Maintenance Window 합의</span></label></li>
+  </ul></details>
+  <details open><summary>PRE 2 · Rehearsal</summary><ul class="checks">
+    <li><label><input type="checkbox"><span>운영과 유사한 Non-production 환경에서 동일 Source → Target Path 검증</span></label></li>
+    <li><label><input type="checkbox"><span>Read, COMMIT + Read-back, 신규 Login, 실제 업무 Request / SLO Probe 준비</span></label></li>
+    <li><label><input type="checkbox"><span>Outage, Data Consistency, Authentication과 Recovery를 함께 시험</span></label></li>
+  </ul></details>
+  <details open><summary>DURING · Change Control</summary><ul class="checks">
+    <li><label><input type="checkbox"><span>MVU 요청 전에 Application Write 중지, DDL / Rebalance / Scale / 대형 Batch 회피</span></label></li>
+    <li><label><input type="checkbox"><span>authConfig 명시를 Rehearsal에서 검증하고 요청 전후 Auth 설정 비교</span></label></li>
+    <li><label><input type="checkbox"><span>Azure-AsyncOperation + Resource State + Client Probe 동시 추적</span></label></li>
+    <li><label><input type="checkbox"><span>Request → Ready 전체 변경 구간 관리. 이번 약 17분을 상한이나 일반값으로 사용하지 않음</span></label></li>
+  </ul></details>
+  <details open><summary>POST · Cluster / Application Acceptance</summary><ul class="checks">
+    <li><label><input type="checkbox"><span>Async 성공, Resource Ready, 모든 Node의 PG / Citus Version 확인</span></label></li>
+    <li><label><input type="checkbox"><span>Metadata / Shard Placement / Reference Table / Colocation / Shell Table 확인</span></label></li>
+    <li><label><input type="checkbox"><span>Distributed Write / Read-back, 신규 Entra Login과 HA / Replica / CDC 확인</span></label></li>
+    <li><label><input type="checkbox"><span>ANALYZE 후 Query Plan / Latency / Error Rate / 대표 Transaction 비교</span></label></li>
+    <li><label><input type="checkbox"><span>Application SLO와 Data 검증을 통과한 후 Write / Batch 단계적 재개</span></label></li>
+  </ul></details>
+  <p><strong>ANALYZE ≠ Compaction.</strong> Statistics 갱신 작업이며 VACUUM FULL과 다릅니다. MVU가 Bloat를 자동 제거한다고 가정하거나 모든 테이블에 VACUUM FULL / REINDEX를 일괄 수행하지 않습니다. 실측 ANALYZE 1.85초는 해당 소규모 환경에 한정됩니다.</p>
+  <p class="source">PPTX Slide 13 · Readiness &amp; Acceptance Criteria</p>
+</section>
+
+<section class="section" id="questions" data-slides="14" data-keywords="인증 질문 미확인 이슈 FAQ">
+  <div class="section-head"><span class="eyebrow">11 / QUESTIONS</span><span class="badge pending">제품팀 확인 필요</span></div>
+  <h2>고객 FAQ와 아직 답이 확정되지 않은 질문</h2>
+  <details><summary>Q. DB 접속이 되면 바로 Write를 열어도 되나요?</summary><p>권고하지 않습니다. Resource Ready 이후 Metadata / Data Consistency / 신규 Auth / Application SLO 검증까지 통과한 후 재개하는 절차를 제안합니다.</p></details>
+  <details><summary>Q. 예상 중단 시간을 7분으로 안내해도 되나요?</summary><p>아니요. 7분은 한 환경의 DB Outage Proxy입니다. 실제 업무 중단, HA 복구, 대규모 데이터 또는 다른 Workload에 대한 예측값이 아닙니다. 고객 환경 Rehearsal로 변경 창을 정해야 합니다.</p></details>
+  <div class="table-wrap"><table><caption>Open Items — 원인이나 일정이 확정된 항목이 아님</caption><thead><tr><th>카테고리</th><th>제품팀에 확인할 질문</th><th>운영 영향</th></tr></thead><tbody>
+    <tr><td>Entra Auth</td><td>version-only PATCH의 Auth 초기화가 의도된 동작인가?</td><td>authConfig와 재활성화 절차</td></tr>
+    <tr><td>Shell Table Writes</td><td>Metadata 준비 전 Write 수락 여부와 공식 확인 / 복구 방법은?</td><td>Write Resume Gate, Consistency</td></tr>
+    <tr><td>Validation</td><td>전용 API / Portal Validate와 Blocker 상세 오류를 제공하는가?</td><td>Pre-check와 실패 원인 진단</td></tr>
+    <tr><td>Korea Central</td><td>요청 수락 후 PG17 유지 원인과 공식 지원 일정은?</td><td>Region 선택, 고객 PoC</td></tr>
+    <tr><td>Logs</td><td>Shutdown → pg_upgrade → Startup 로그를 확인할 공식 경로는?</td><td>증적 수집, 장애 분석</td></tr>
+    <tr><td>GA Interface</td><td>정식 Portal / CLI / API Version과 실행 절차는?</td><td>자동화와 운영 표준화</td></tr>
+  </tbody></table></div>
+  <p>문의: <a href="mailto:choyujin@microsoft.com?subject=Elastic%20Clusters%20MVU%20Inquiry">Yujin Cho · choyujin@microsoft.com</a></p>
+  <p class="source">PPTX Slide 14 · Open Items for Product Team / FAQ는 관련 실측과 운영 권고를 재구성</p>
+</section>
+
+<section class="section" id="comparison" data-slides="15,17">
+  <div class="section-head"><span class="eyebrow">12 / COMPARISON</span><span class="badge">장표 기반 참고</span></div>
+  <h2>서비스 선택과 Upgrade 방식은 별개의 비교</h2>
+  <div class="table-wrap"><table><caption>서비스 설계 관점 — 성능 Benchmark가 아님</caption><thead><tr><th>서비스</th><th>설계 관점</th><th>검토할 점</th></tr></thead><tbody>
+    <tr><td>Elastic Clusters</td><td>PostgreSQL + Citus · Shard-key Driven</td><td>Distribution Key / Colocation, Extension 호환성</td></tr>
+    <tr><td>Aurora Limitless</td><td>Aurora PostgreSQL-compatible Distributed Model</td><td>SQL / Function / 비용 제약을 Workload별 확인</td></tr>
+    <tr><td>Aurora DSQL</td><td>Serverless Distributed SQL · Strong Consistency 지향</td><td>PostgreSQL Engine Control / Extension 의존성 확인</td></tr>
+  </tbody></table></div>
+  <div class="table-wrap"><table><caption>Major Upgrade Path 비교</caption><thead><tr><th>방식</th><th>전환 모델</th><th>중단 시간 해석</th></tr></thead><tbody>
+    <tr><td>Elastic · MVU 이전 방식</td><td>새 Cluster + pg_dump / pg_restore, pgcopydb 등 Migration</td><td>Data Migration과 Endpoint 전환 계획 필요</td></tr>
+    <tr><td>Elastic · MVU Preview</td><td>기존 Cluster In-place</td><td>이번 Direct 약 420 s / Request → Ready 약 17 min</td></tr>
+    <tr><td>Aurora PostgreSQL · In-place</td><td>Engine Upgrade</td><td>장표에 동등 조건의 실측 수치 없음</td></tr>
+    <tr><td>Aurora PostgreSQL · Blue/Green</td><td>Green 생성 / 동기화 후 Switchover</td><td>Switchover와 전체 준비 시간을 구분해야 함</td></tr>
+    <tr><td>Aurora Limitless</td><td>장표 조사 당시 Major Upgrade Path 미확인</td><td>최신 AWS 문서에서 별도 확인</td></tr>
+  </tbody></table></div>
+  <p class="small muted">다른 서비스의 공개 설명과 이번 Elastic 1회 실측을 직접 성능 비교로 해석하지 않습니다. AWS 기능, 제약, 지원 Version과 Upgrade 절차는 최신 공식 문서 확인이 필요합니다.</p>
+  <p class="source">PPTX Slides 15, 17 · Elastic vs Aurora Limitless vs DSQL / Major Upgrade Paths &amp; Downtime</p>
+</section>
+
+<section class="section" id="references" data-slides="16">
+  <div class="section-head"><span class="eyebrow">13 / REFERENCE</span><span class="badge">용어 · 근거</span></div>
+  <h2>용어와 자료 범위</h2>
+  <div class="table-wrap"><table><thead><tr><th>용어</th><th>의미</th></tr></thead><tbody>
+    <tr><td>MVU</td><td>Major Version Upgrade</td></tr>
+    <tr><td>Coordinator / Worker</td><td>Distributed Execution 조정 / Shard 실행 역할</td></tr>
+    <tr><td>Shard</td><td>분산 테이블의 데이터 조각</td></tr>
+    <tr><td>Shell Table</td><td>Distributed Table 원래 이름 위치의 Local Table</td></tr>
+    <tr><td>PgBouncer</td><td>Connection Pooler</td></tr>
+    <tr><td>pgaadauth</td><td>Microsoft Entra Login 관련 Extension</td></tr>
+    <tr><td>ARM PATCH</td><td>ARM Resource Property 변경 요청</td></tr>
+    <tr><td>Azure-AsyncOperation</td><td>비동기 작업 상태를 추적하는 URL</td></tr>
+    <tr><td>PITR</td><td>Point-in-time Restore</td></tr>
+  </tbody></table></div>
+  <p><strong>기준 자료:</strong> Elastic_Cluster_MVU_Customer_Impact_2026-10-23_v3.pptx, 총 17개 슬라이드. 각 카테고리 아래 원본 슬라이드 번호를 표시했습니다. 그림은 장표의 개념을 웹용으로 재구성한 것이며 원본 스크린샷은 아닙니다.</p>
+  <p><strong>자료 구분:</strong> 실측은 해당 시험에서 관찰한 결과, 추론은 원인 / 내부 동작에 대한 해석, 운영 권고는 고객 환경에서 추가 검증할 제안, 미확인은 제품팀 또는 최신 문서 확인이 필요한 항목입니다.</p>
+  <p>공개 참고: <a href="https://azure.microsoft.com/ko-kr/updates?id=571504rs" target="_blank" rel="noopener noreferrer">Azure Updates</a> · <a href="https://learn.microsoft.com/azure/postgresql/elastic-clusters/" target="_blank" rel="noopener noreferrer">Elastic Clusters 공식 문서</a></p>
+  <p class="small muted">Azure Updates 링크의 개별 항목 본문은 이번 웹 구성에서 확인하지 못했으므로 최신 지원 여부를 입증하는 출처로 사용하지 않았습니다. 내부 SharePoint 링크, Resource ID와 로그 원문은 이 페이지에 포함하지 않습니다.</p>
+  <p class="source">PPTX Slide 16 · Sources &amp; Glossary</p>
+</section>
+<footer><a class="top-link" href="#top">맨 위로 ↑</a>Yujin Cho · Independent validation notes<br>제품 SLA나 공식 지원 선언을 대체하지 않습니다.</footer>
+</main>
+</div>
+<script>
+const search = document.getElementById("search");
+const sections = [...document.querySelectorAll(".section")];
+const links = [...document.querySelectorAll("nav a")];
+const results = document.getElementById("results");
+search.addEventListener("input", () => {
+  const terms = search.value.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  let count = 0;
+  sections.forEach(section => {
+    const text = (section.textContent + " " + (section.dataset.keywords || "")).toLocaleLowerCase();
+    const matches = terms.every(term => text.includes(term));
+    section.hidden = !matches;
+    links.find(link => link.hash === "#" + section.id).hidden = !matches;
+    if (matches) count++;
+  });
+  results.textContent = terms.length ? `${count}개 카테고리 일치` : "";
+  document.getElementById("empty").hidden = count !== 0;
+});
+document.getElementById("theme").addEventListener("click", () => {
+  document.documentElement.dataset.theme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+});
+document.querySelectorAll('a[href^="#"]').forEach(link => {
+  link.addEventListener("click", () => {
+    const target = document.getElementById(link.hash.slice(1));
+    if (target && target.hidden) {
+      search.value = "";
+      search.dispatchEvent(new Event("input"));
+    }
+  });
+});
+const observer = new IntersectionObserver(entries => {
+  const entry = entries.find(item => item.isIntersecting);
+  if (!entry) return;
+  links.forEach(link => {
+    if (link.hash === "#" + entry.target.id) link.setAttribute("aria-current", "location");
+    else link.removeAttribute("aria-current");
+  });
+}, {rootMargin:"-10% 0px -65% 0px", threshold:0});
+sections.forEach(section => observer.observe(section));
+</script>
 </body>
 </html>

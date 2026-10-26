@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Azure PostgreSQL Elastic Clusters MVU 검증 가이드</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --panel: #121a2b;
+      --text: #e6edf7;
+      --muted: #9fb0cc;
+      --accent: #56b6ff;
+      --ok: #59d499;
+      --warn: #ffd166;
+      --danger: #ff7b7b;
+      --border: #26324b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Arial, sans-serif;
+      background: linear-gradient(180deg, #0b1220 0%, #0f1728 100%);
+      color: var(--text);
+      line-height: 1.55;
+    }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 24px; }
+    h1, h2, h3 { margin: 0 0 12px; }
+    .hero, .panel {
+      background: rgba(18, 26, 43, 0.94);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+      margin-bottom: 18px;
+    }
+    .meta { color: var(--muted); font-size: 14px; }
+    .summary { color: #dbe7ff; font-size: 17px; margin-top: 10px; }
+    .grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    }
+    .kpi {
+      border: 1px solid var(--border);
+      background: #101a2c;
+      border-radius: 12px;
+      padding: 14px;
+    }
+    .kpi .v { font-size: 28px; font-weight: 700; margin-bottom: 4px; }
+    .kpi .k { color: var(--muted); font-size: 13px; }
+    .img-card {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #0e1728;
+      padding: 10px;
+      margin: 10px 0;
+    }
+    .img-card img { width: 100%; height: auto; display: block; border-radius: 10px; }
+    ul { margin: 8px 0 0 18px; }
+    .tag {
+      display: inline-block;
+      font-size: 12px;
+      color: #001526;
+      background: var(--accent);
+      border-radius: 999px;
+      padding: 3px 10px;
+      margin-right: 6px;
+      font-weight: 700;
+    }
+    details {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-top: 8px;
+      background: #0f182a;
+    }
+    summary {
+      cursor: pointer;
+      font-weight: 600;
+      color: #dce9ff;
+    }
+    a { color: #8fd0ff; }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="hero">
+      <span class="tag">Customer-facing</span><span class="tag">MVU Validation</span>
+      <h1>Azure PostgreSQL Elastic Clusters MVU 검증 내역</h1>
+      <p class="meta">by Yujin Cho · 기준 자료: Elastic_Cluster_MVU_Customer_Impact_2026-10-23_v3.pptx</p>
+      <p class="summary">
+        이 페이지는 PPTX 검증 내용을 고객이 빠르게 확인할 수 있도록 재구성한 웹 요약본입니다.
+        핵심은 <strong>Migration 없이 Major Version 업그레이드 가능</strong>하다는 장점과,
+        운영 기준은 단순 reconnect가 아니라 <strong>Ready + Data/Auth/App 검증</strong>까지라는 점입니다.
+      </p>
+    </section>
+
+    <section class="panel">
+      <h2>1) 실측 핵심 지표</h2>
+      <div class="grid">
+        <article class="kpi"><div class="v" style="color:var(--danger)">~420초</div><div class="k">Direct DB outage</div></article>
+        <article class="kpi"><div class="v" style="color:var(--warn)">261.5초</div><div class="k">PgBouncer outage</div></article>
+        <article class="kpi"><div class="v" style="color:var(--accent)">~17분</div><div class="k">Upgrade 요청 → Ready</div></article>
+        <article class="kpi"><div class="v" style="color:var(--danger)">~383초</div><div class="k">Entra 신규 로그인 장애</div></article>
+      </div>
+      <p class="meta">주의: 위 수치는 Japan East 2-node 환경 1회 실측 결과이며 일반 SLA로 일반화할 수 없습니다.</p>
+    </section>
+
+    <section class="panel">
+      <h2>2) 시각화: 왜 Reconnect ≠ Ready 인가</h2>
+      <div class="img-card">
+        <img src="./timeline.svg" alt="MVU 타임라인 시각화" />
+      </div>
+      <div class="img-card">
+        <img src="./readiness-gate.svg" alt="서비스 재개 전 검증 게이트" />
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>3) 운영 체크리스트(요약)</h2>
+      <div class="img-card">
+        <img src="./runbook-flow.svg" alt="업그레이드 운영 플로우" />
+      </div>
+      <ul>
+        <li><strong>사전:</strong> blocker pre-check, rehearsal, probe 준비, authConfig 포함</li>
+        <li><strong>진행:</strong> write 중지, async 상태 추적, 요청~Ready 전체 구간 관리</li>
+        <li><strong>사후:</strong> version/metadata/consistency/auth/SLO 확인 후 단계적 write 재개</li>
+      </ul>
+    </section>
+
+    <section class="panel">
+      <h2>4) 고객 Q&A / 확인이 필요한 이슈</h2>
+      <details>
+        <summary>Q1. 업그레이드 후 Entra 인증이 꺼질 수 있나요?</summary>
+        <p>실측에서 version-only 요청 시 Entra auth 초기화 이슈를 관찰했습니다. 요청에 authConfig를 명시하고, 업그레이드 후 신규 로그인 검증이 필요합니다.</p>
+      </details>
+      <details>
+        <summary>Q2. DB 연결이 되면 바로 서비스 재개해도 되나요?</summary>
+        <p>아니요. Ready, shard/metadata, distributed write consistency, auth, app SLO까지 확인한 뒤 재개해야 합니다.</p>
+      </details>
+      <details>
+        <summary>Q3. 현재 단계에서 가장 중요한 운영 포인트는?</summary>
+        <p>Public Preview 단계에서는 pre-check → rehearsal → controlled upgrade → post-validation을 표준 절차로 운영하는 것이 핵심입니다.</p>
+      </details>
+      <details>
+        <summary>Q4. 추가 확인이 필요한 Open Item은?</summary>
+        <ul>
+          <li>Entra auth reset 동작 의도 여부</li>
+          <li>재기동 직후 write visibility anomaly 원인</li>
+          <li>Elastic 전용 pre-check/validation API 로드맵</li>
+          <li>Korea Central 지원 상태 및 일정</li>
+        </ul>
+      </details>
+    </section>
+
+    <section class="panel">
+      <h2>5) 문의</h2>
+      <p>검증 상세(실험 조건, probe 로그, 운영 적용 범위)는 아래로 문의하세요.</p>
+      <p><a href="mailto:choyujin@microsoft.com?subject=Elastic%20Cluster%20MVU%20Validation%20Inquiry">choyujin@microsoft.com</a></p>
+    </section>
+  </main>
+</body>
+</html>

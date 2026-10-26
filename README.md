@@ -4,6 +4,11 @@
 
 이 저장소는 Elastic Cluster Major Version Upgrade(MVU) 실측 결과를 운영 관점에서 정리한 private 배포용 문서입니다.
 
+## 웹 페이지
+
+- 고객용 페이지: `index.html`
+- 시각 자료: `assets/*.svg` (PPTX 내용 기반 재구성)
+
 ## 핵심 메시지
 
 1. MVU는 migration 없이 in-place major upgrade를 수행해 운영 복잡도를 낮춘다.
